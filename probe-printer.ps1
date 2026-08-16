@@ -11,12 +11,14 @@
 
 # עובד גם כשמדביקים את התוכן ישירות לתוך חלון PowerShell (לא מריצים
 # קובץ) - למקרה ש-Smart App Control חוסם הרצת קבצים עם סיומת "מסוכנת"
-# שהורדו מהאינטרנט. במצב הדבקה $PSScriptRoot ריק - נופלים לתיקיית שולחן
-# העבודה כדי שהתוצאות עדיין יישמרו במקום נגיש וידוע.
-if (-not $PSScriptRoot) { $PSScriptRoot = [Environment]::GetFolderPath("Desktop") }
+# שהורדו מהאינטרנט. $PSScriptRoot הוא משתנה שמור ע"י המנוע - בהדבקה
+# אינטראקטיבית הוא תמיד ריק, ו-PowerShell מתעלם בשקט מניסיון לשכתב אותו
+# (ה-if הקודם לא זרק שגיאה אבל גם לא תפס) - לכן קוראים אותו לתוך משתנה
+# רגיל משלנו ($OutDir) ולא מנסים לגעת ב-$PSScriptRoot בכלל.
+$OutDir = if ($PSScriptRoot) { $PSScriptRoot } else { [Environment]::GetFolderPath("Desktop") }
 
 $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$logFile = Join-Path $PSScriptRoot "probe-log_$stamp.txt"
+$logFile = Join-Path $OutDir "probe-log_$stamp.txt"
 Start-Transcript -Path $logFile -NoClobber | Out-Null
 
 Add-Type -AssemblyName System.Printing
@@ -31,7 +33,7 @@ $server = New-Object System.Printing.PrintServer
 
 foreach ($p in $printers) {
     $safeName = ($p.Name -replace '[\\/:*?"<>|]', '_')
-    $outFile = Join-Path $PSScriptRoot "capabilities_$safeName.xml"
+    $outFile = Join-Path $OutDir "capabilities_$safeName.xml"
     try {
         $queue = $server.GetPrintQueue($p.Name)
         $stream = $queue.GetPrintCapabilitiesAsXml()
@@ -64,7 +66,7 @@ Stop-Transcript | Out-Null
 try {
     $desktop = [Environment]::GetFolderPath("Desktop")
     $zipPath = Join-Path $desktop "PrinterProbe_$stamp.zip"
-    $filesToZip = @($logFile) + (Get-ChildItem -Path $PSScriptRoot -Filter "capabilities_*.xml" | Select-Object -ExpandProperty FullName)
+    $filesToZip = @($logFile) + (Get-ChildItem -Path $OutDir -Filter "capabilities_*.xml" | Select-Object -ExpandProperty FullName)
     Compress-Archive -Path $filesToZip -DestinationPath $zipPath -Force
     Write-Host ""
     Write-Host "=====================================================" -ForegroundColor Yellow
