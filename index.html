@@ -7,27 +7,103 @@
 <style>
   body{font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;max-width:560px;margin:60px auto;padding:0 20px;color:#222;line-height:1.6}
   h1{font-size:22px}
-  .btn{display:block;text-align:center;background:#2563eb;color:#fff;text-decoration:none;padding:16px;border-radius:10px;font-weight:700;font-size:17px;margin:14px 0}
-  .btn.secondary{background:#f2f2f2;color:#222}
+  .btn{display:block;width:100%;text-align:center;background:#2563eb;color:#fff;border:none;text-decoration:none;padding:18px;border-radius:10px;font-weight:700;font-size:18px;margin:18px 0;cursor:pointer;transition:background .15s}
+  .btn:active{background:#1e4fce}
+  .btn.copied{background:#16a34a}
   ol{padding-right:20px}
   li{margin-bottom:10px}
   .note{background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:12px 14px;font-size:14px;margin-top:24px}
+  code{background:#f2f2f2;padding:2px 6px;border-radius:4px;font-size:13px}
 </style>
 </head>
 <body>
   <h1>בדיקת יכולות מדפסת</h1>
-  <p>לוחצים על שני הכפתורים למטה, שומרים את שניהם <b>לאותה תיקייה</b> (למשל שולחן העבודה) — הכפתורים שומרים עם הסיומת הנכונה אוטומטית, בלי צורך לתקן שם קובץ.</p>
+  <p>כפתור אחד — מעתיק את כל הבדיקה ללוח (Clipboard). לא מוריד שום קובץ, אז שום חוסם קבצים לא נכנס לתמונה.</p>
 
-  <a class="btn" href="probe-printer.bat" download="probe-printer.bat">⬇ הורדת probe-printer.bat</a>
-  <a class="btn secondary" href="probe-printer.ps1" download="probe-printer.ps1">⬇ הורדת probe-printer.ps1</a>
+  <button class="btn" id="copyBtn">📋 העתק את הבדיקה ללוח</button>
 
   <ol>
-    <li>אחרי שהורדתם את שניהם לאותה תיקייה — לחיצה כפולה על <b>probe-printer.bat</b>.</li>
-    <li>אם מופיעה אזהרה כחולה של Windows ("Windows protected your PC") — לוחצים <b>More info</b> ואז <b>Run anyway</b>. זה תקין, לא בעיה.</li>
-    <li>ייפתח חלון, ירוץ בדיקה קצרה, ובסוף יופיע בצהוב נתיב לקובץ ZIP אחד שנוצר על שולחן העבודה.</li>
-    <li>שולחים את קובץ ה-ZIP הזה בחזרה (וואטסאפ וכו' — לא מייל).</li>
+    <li>לוחצים על הכפתור למעלה (הוא יתחלף זמנית ל"הועתק ✓").</li>
+    <li>פותחים <b>PowerShell</b>: לחיצה על "התחל" (Start), מקלידים <code>PowerShell</code>, Enter.</li>
+    <li>בתוך החלון של PowerShell — <b>קליק ימני</b> (מדביק אוטומטית) או <code>Ctrl+Shift+V</code>, ואז <b>Enter</b>.</li>
+    <li>ירוץ בדיקה קצרה, ובסוף יופיע בצהוב נתיב לקובץ ZIP אחד שנוצר על שולחן העבודה.</li>
+    <li>שולחים את קובץ ה-ZIP הזה בחזרה (וואטסאפ וכו' — <b>לא</b> מייל).</li>
   </ol>
 
-  <div class="note">שני הקבצים כאן לא מכילים שום סיסמה/טוקן/מידע רגיש — הם רק בודקים אילו מדפסות מותקנות במחשב הזה ומה הדרייבר שלהן תומך בו.</div>
+  <div class="note">התוכן שמועתק לא מכיל שום סיסמה/טוקן/מידע רגיש — הוא רק בודק אילו מדפסות מותקנות במחשב הזה ומה הדרייבר שלהן תומך בו.</div>
+
+  <textarea id="scriptContent" style="position:absolute;left:-9999px;top:-9999px" readonly>$OutDir = if ($PSScriptRoot) { $PSScriptRoot } else { [Environment]::GetFolderPath("Desktop") }
+$stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$logFile = Join-Path $OutDir "probe-log_$stamp.txt"
+Start-Transcript -Path $logFile -NoClobber | Out-Null
+Add-Type -AssemblyName System.Printing
+Import-Module PrintManagement -ErrorAction SilentlyContinue
+$printers = Get-Printer | Select-Object Name, DriverName, PortName
+Write-Host "=== מדפסות מותקנות ===" -ForegroundColor Cyan
+$printers | Format-Table -AutoSize
+$server = New-Object System.Printing.PrintServer
+foreach ($p in $printers) {
+    $safeName = ($p.Name -replace '[\\/:*?"<>|]', '_')
+    $outFile = Join-Path $OutDir "capabilities_$safeName.xml"
+    try {
+        $queue = $server.GetPrintQueue($p.Name)
+        $stream = $queue.GetPrintCapabilitiesAsXml()
+        $reader = New-Object System.IO.StreamReader($stream)
+        $xmlText = $reader.ReadToEnd()
+        $reader.Close()
+        $xmlText | Out-File -FilePath $outFile -Encoding utf8
+        Write-Host "נשמר: $outFile" -ForegroundColor Green
+        $xml = [xml]$xmlText
+        $ns = New-Object System.Xml.XmlNamespaceManager($xml.NameTable)
+        $ns.AddNamespace("psf", "http://schemas.microsoft.com/windows/2003/08/printing/printschemaframework")
+        $ns.AddNamespace("psk", "http://schemas.microsoft.com/windows/2003/08/printing/printschemakeywords")
+        $bookletSupport = $xml.SelectNodes("//psf:Feature[contains(@name,'Booklet')]", $ns)
+        $stapleSupport  = $xml.SelectNodes("//psf:Feature[contains(@name,'Staple') or contains(@name,'Finishing')]", $ns)
+        Write-Host ("  תמיכה בחוברת (Booklet): {0}" -f ($(if ($bookletSupport.Count -gt 0) {"כן"} else {"לא נמצא"})))
+        Write-Host ("  תמיכה בהידוק (Staple): {0}" -f ($(if ($stapleSupport.Count -gt 0) {"כן"} else {"לא נמצא"})))
+    } catch {
+        Write-Host "שגיאה עבור $($p.Name): $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+Stop-Transcript | Out-Null
+try {
+    $desktop = [Environment]::GetFolderPath("Desktop")
+    $zipPath = Join-Path $desktop "PrinterProbe_$stamp.zip"
+    $filesToZip = @($logFile) + (Get-ChildItem -Path $OutDir -Filter "capabilities_*.xml" | Select-Object -ExpandProperty FullName)
+    Compress-Archive -Path $filesToZip -DestinationPath $zipPath -Force
+    Write-Host "`nהכל ארוז לקובץ אחד, על שולחן העבודה: $zipPath" -ForegroundColor Yellow
+} catch {
+    Write-Host ("שגיאה באריזת התוצאות ל-ZIP: " + $_.Exception.Message) -ForegroundColor Red
+}</textarea>
+
+  <script>
+    var btn = document.getElementById('copyBtn');
+    var ta = document.getElementById('scriptContent');
+    btn.addEventListener('click', function () {
+      var text = ta.value;
+      function showCopied() {
+        var original = '📋 העתק את הבדיקה ללוח';
+        btn.textContent = '✓ הועתק! עכשיו פתחו PowerShell והדביקו';
+        btn.classList.add('copied');
+        setTimeout(function () { btn.textContent = original; btn.classList.remove('copied'); }, 2500);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(showCopied, function () { fallbackCopy(); });
+      } else {
+        fallbackCopy();
+      }
+      function fallbackCopy() {
+        ta.style.position = 'fixed';
+        ta.style.left = '0';
+        ta.style.top = '0';
+        ta.focus();
+        ta.select();
+        try { document.execCommand('copy'); showCopied(); } catch (e) { alert('ההעתקה נכשלה - נסו שוב או צרו קשר.'); }
+        ta.style.position = 'absolute';
+        ta.style.left = '-9999px';
+        ta.style.top = '-9999px';
+      }
+    });
+  </script>
 </body>
 </html>
