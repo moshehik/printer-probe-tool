@@ -76,32 +76,52 @@ try {
     Write-Host ("שגיאה באריזת התוצאות ל-ZIP: " + $_.Exception.Message) -ForegroundColor Red
 }</textarea>
 
+  <div id="manualBox" style="display:none;margin-top:16px">
+    <p style="font-weight:700">ההעתקה האוטומטית חסומה כאן (מדיניות דפדפן/ארגון) — אין דבר, פשוט תעתיקו ידנית:</p>
+    <p>הטקסט למטה כבר מסומן — לוחצים <code>Ctrl+C</code> (או קליק ימני ← העתק), ואז ממשיכים לשלב 2 (פתיחת PowerShell).</p>
+    <textarea id="manualTextarea" readonly style="width:100%;height:160px;font-family:monospace;font-size:12px;direction:ltr;text-align:left;padding:8px;border-radius:8px;border:1px solid #ccc"></textarea>
+  </div>
+
   <script>
     var btn = document.getElementById('copyBtn');
     var ta = document.getElementById('scriptContent');
+    var manualBox = document.getElementById('manualBox');
+    var manualTextarea = document.getElementById('manualTextarea');
+
+    function showCopied() {
+      var original = '📋 העתק את הבדיקה ללוח';
+      btn.textContent = '✓ הועתק! עכשיו פתחו PowerShell והדביקו';
+      btn.classList.add('copied');
+      manualBox.style.display = 'none';
+      setTimeout(function () { btn.textContent = original; btn.classList.remove('copied'); }, 2500);
+    }
+
+    function showManualFallback() {
+      manualTextarea.value = ta.value;
+      manualBox.style.display = 'block';
+      manualTextarea.focus();
+      manualTextarea.select();
+    }
+
+    function tryExecCommandCopy() {
+      ta.style.position = 'fixed';
+      ta.style.left = '0';
+      ta.style.top = '0';
+      ta.focus();
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      ta.style.position = 'absolute';
+      ta.style.left = '-9999px';
+      ta.style.top = '-9999px';
+      if (ok) showCopied(); else showManualFallback();
+    }
+
     btn.addEventListener('click', function () {
-      var text = ta.value;
-      function showCopied() {
-        var original = '📋 העתק את הבדיקה ללוח';
-        btn.textContent = '✓ הועתק! עכשיו פתחו PowerShell והדביקו';
-        btn.classList.add('copied');
-        setTimeout(function () { btn.textContent = original; btn.classList.remove('copied'); }, 2500);
-      }
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(showCopied, function () { fallbackCopy(); });
+        navigator.clipboard.writeText(ta.value).then(showCopied, tryExecCommandCopy);
       } else {
-        fallbackCopy();
-      }
-      function fallbackCopy() {
-        ta.style.position = 'fixed';
-        ta.style.left = '0';
-        ta.style.top = '0';
-        ta.focus();
-        ta.select();
-        try { document.execCommand('copy'); showCopied(); } catch (e) { alert('ההעתקה נכשלה - נסו שוב או צרו קשר.'); }
-        ta.style.position = 'absolute';
-        ta.style.left = '-9999px';
-        ta.style.top = '-9999px';
+        tryExecCommandCopy();
       }
     });
   </script>
