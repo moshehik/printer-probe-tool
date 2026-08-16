@@ -9,6 +9,12 @@
 # לוג הריצה המלא + קובץ XML לכל מדפסת - קובץ יחיד, נוח לשלוח (וואטסאפ
 # וכו', לא מייל). אין תלות ב-git/GitHub/שום הרשאה.
 
+# עובד גם כשמדביקים את התוכן ישירות לתוך חלון PowerShell (לא מריצים
+# קובץ) - למקרה ש-Smart App Control חוסם הרצת קבצים עם סיומת "מסוכנת"
+# שהורדו מהאינטרנט. במצב הדבקה $PSScriptRoot ריק - נופלים לתיקיית שולחן
+# העבודה כדי שהתוצאות עדיין יישמרו במקום נגיש וידוע.
+if (-not $PSScriptRoot) { $PSScriptRoot = [Environment]::GetFolderPath("Desktop") }
+
 $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $logFile = Join-Path $PSScriptRoot "probe-log_$stamp.txt"
 Start-Transcript -Path $logFile -NoClobber | Out-Null
